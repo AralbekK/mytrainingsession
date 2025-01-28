@@ -1,21 +1,24 @@
 package com.example.mytrainingsession
 
+import android.os.Build
 import android.os.Bundle
-import android.os.CountDownTimer
+import android.util.TypedValue
+import android.view.View
 import android.widget.Button
 import android.widget.ImageView
 import android.widget.TextView
+import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.widget.Toolbar
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.updatePadding
+import androidx.lifecycle.Observer
 
-/**
- * Главная активность, отображающая информацию о тренировке и управляемая логикой времени и текущим упражнением.
- */
 class MainActivity : AppCompatActivity() {
+    private val viewModel: WorkoutViewModel by viewModels()
 
-    // Список всех упражнений, загруженных из базы данных упражнений
-    private val exercises = ExerciseDataBase.exercises
-
-    // Виджеты интерфейса, используемые в приложении
     private lateinit var startButton: Button
     private lateinit var titleTV: TextView
     private lateinit var exerciseTV: TextView
@@ -23,15 +26,14 @@ class MainActivity : AppCompatActivity() {
     private lateinit var completeButton: Button
     private lateinit var timerTV: TextView
     private lateinit var imageView: ImageView
-
-    // Индекс текущего упражнения и ссылка на это упражнение
-    private var exerciseIndex = 0
-    private lateinit var currentExercise: Exercise
-    private lateinit var timer: CountDownTimer
+    private lateinit var toolbar: Toolbar
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+
+        // Установка окна без ActionBar
+        WindowCompat.setDecorFitsSystemWindows(window, true)
 
         // Привязка виджетов интерфейса по их идентификаторам
         startButton = findViewById(R.id.startButtonBTN)
@@ -41,79 +43,92 @@ class MainActivity : AppCompatActivity() {
         completeButton = findViewById(R.id.completeButtonBTN)
         timerTV = findViewById(R.id.timerTV)
         imageView = findViewById(R.id.imageViewIV)
+        toolbar = findViewById(R.id.toolbar)
+
+        // Установка Toolbar
+        setSupportActionBar(toolbar)
+
+        // Управление отступами под системными окнами
+        ViewCompat.setOnApplyWindowInsetsListener(window.decorView) { _, insets ->
+            val systemBars = insets.systemWindowInsetTop
+            val additionalOffset = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, 5f, resources.displayMetrics).toInt()
+            toolbar.updatePadding(top = systemBars + additionalOffset)
+            insets
+        }
+
+        // Наблюдение за изменениями в ViewModel
+        viewModel.exerciseIndex.observe(this, Observer { index ->
+            // Обновление индекса упражнения
+        })
+
+        viewModel.currentExercise.observe(this, Observer { exercise ->
+            exercise?.let {
+                exerciseTV.text = it.name
+                descriptionTV.text = it.description
+                imageView.setImageResource(it.gifImage)
+            }
+        })
+
+        viewModel.timerSecondsLeft.observe(this, Observer { seconds ->
+            timerTV.text = formatTime(seconds)
+        })
+
+        viewModel.isCompleteButtonEnabled.observe(this, Observer { isEnabled ->
+            completeButton.isEnabled = isEnabled
+        })
+
+        viewModel.startButtonText.observe(this, Observer { text ->
+            startButton.text = text
+        })
+
+        viewModel.titleText.observe(this, Observer { text ->
+            titleTV.text = text
+        })
+
+        viewModel.exerciseText.observe(this, Observer { text ->
+            exerciseTV.text = text
+        })
+
+        viewModel.descriptionText.observe(this, Observer { text ->
+            descriptionTV.text = text
+        })
+
+        viewModel.timerText.observe(this, Observer { text ->
+            timerTV.text = text
+        })
+
+        viewModel.isTimerRunning.observe(this, Observer { isRunning ->
+            if (!isRunning) {
+                imageView.setImageResource(0)
+            }
+        })
 
         // Установка обработчиков нажатий на кнопки
         startButton.setOnClickListener {
-            startWorkout()
+            viewModel.startWorkout()
         }
 
         completeButton.setOnClickListener {
-            completeExercise()
+            viewModel.completeExercise()
         }
     }
 
-    /**
-     * Окончание текущего упражнения
-     */
-    private fun completeExercise() {
-        timer.cancel()
-        completeButton.isEnabled = false
-        startNextExercise()
+    override fun onCreateOptionsMenu(menu: android.view.Menu?): Boolean {
+        menuInflater.inflate(R.menu.main_menu, menu)
+        return true
     }
 
-    /**
-     * Начало тренировки: инициализация первого упражнения и настройкиUI
-     */
-    private fun startWorkout() {
-        exerciseIndex = 0
-        titleTV.text = "Начало тренировки"
-        startButton.isEnabled = false
-        startButton.text = "Процесс тренировки..."
-        startNextExercise()
-    }
-
-    /**
-     * Запуск следующего упражнения из списка, или завершение тренировки, если все упражнения выполнены
-     */
-    private fun startNextExercise() {
-        if (exerciseIndex < exercises.size) {
-            currentExercise = exercises[exerciseIndex]
-            exerciseTV.text = currentExercise.name
-            descriptionTV.text = currentExercise.description
-            imageView.setImageResource(currentExercise.gifImage)
-            timerTV.text = formatTime(currentExercise.durationInSeconds)
-
-            // Настройка и запуск таймера для текущего упражнения
-            timer = object : CountDownTimer(
-                currentExercise.durationInSeconds * 1000L,
-                1000
-            ) {
-                override fun onTick(millisUntilFinished: Long) {
-                    timerTV.text = formatTime((millisUntilFinished / 1000).toInt())
-                }
-
-                override fun onFinish() {
-                    timerTV.text = "Упражнение завершено"
-                    completeButton.isEnabled = true
-                    imageView.setImageResource(0)
-                }
-            }.start()
-
-            exerciseIndex++
-        } else {
-            // Завершение тренировки, если все упражнения выполнены
-            exerciseTV.text = "Тренировка завершена"
-            descriptionTV.text = ""
-            timerTV.text = ""
-            completeButton.isEnabled = false
-            startButton.isEnabled = true
-            startButton.text = "Начать снова"
+    override fun onOptionsItemSelected(item: android.view.MenuItem): Boolean {
+        return when (item.itemId) {
+            R.id.action_exit -> {
+                finishAffinity() // Завершение всех активностей и выход из приложения
+                true
+            }
+            else -> super.onOptionsItemSelected(item)
         }
     }
 
-    /**
-     * Форматирование времени в минутах и секундах из общего количества секунд
-     */
+    // Метод formatTime перемещен в MainActivity
     private fun formatTime(seconds: Int): String {
         val minutes = seconds / 60
         val remainingSeconds = seconds % 60
